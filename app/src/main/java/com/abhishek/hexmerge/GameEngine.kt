@@ -4,7 +4,7 @@ import kotlin.math.max
 import kotlin.random.Random
 
 class GameEngine(
-    private val grid: HexGrid = HexGrid(3),
+    val grid: HexGrid = HexGrid(3),
     private val random: Random = Random.Default
 ) {
     val tiles = linkedMapOf<HexCoord, Int>()
@@ -42,13 +42,14 @@ class GameEngine(
     }
 
     private fun spawnRandomTile() {
-        val empty = grid.cells.filter { it !in tiles }
+        val empty = emptyCells()
         if (empty.isNotEmpty()) tiles[empty.random(random)] = generateValue()
     }
 
     fun emptyCells(): List<HexCoord> = grid.cells.filter { it !in tiles }
+    fun getNeighbors(cell: HexCoord): List<HexCoord> = grid.getNeighbors(cell)
+    fun getValidCells(): List<HexCoord> = grid.cells
 
-    /** Places the current queue tile, then performs deterministic recursive merges. */
     fun place(cell: HexCoord): Boolean {
         if (cell !in grid.cells || cell in tiles || queue.isEmpty()) return false
         tiles[cell] = queue.removeFirst()
@@ -81,10 +82,7 @@ class GameEngine(
         queue.clear(); values.forEach(queue::addLast)
     }
 
-    fun undoSupported(): Boolean = false
-
     fun isGameOver(): Boolean = emptyCells().isEmpty()
-
     fun targetReached(): Boolean = highestTile >= target
 
     fun completeLevel() {
@@ -104,14 +102,21 @@ class GameEngine(
     )
 
     fun restore(s: GameSnapshot) {
-        level = s.level; score = s.score; bestScore = s.bestScore; coins = s.coins
-        unlockedLevel = s.unlockedLevel; stars.clear(); stars.putAll(s.stars)
+        level = s.level.coerceAtLeast(1)
+        score = s.score.coerceAtLeast(0)
+        bestScore = max(s.bestScore, score)
+        coins = s.coins.coerceAtLeast(0)
+        unlockedLevel = max(1, s.unlockedLevel)
+        stars.clear(); stars.putAll(s.stars.filterKeys { it >= 1 }.filterValues { it in 1..3 })
         tiles.clear()
         s.tiles.forEach { (key, value) ->
             val p = key.split(',')
-            if (p.size == 2) tiles[HexCoord(p[0].toIntOrNull() ?: 0, p[1].toIntOrNull() ?: 0)] = value
+            if (p.size == 2) {
+                val cell = HexCoord(p[0].toIntOrNull() ?: Int.MIN_VALUE, p[1].toIntOrNull() ?: Int.MIN_VALUE)
+                if (cell in grid.cells && value > 0) tiles[cell] = value
+            }
         }
-        queue.clear(); s.queue.forEach(queue::addLast)
+        queue.clear(); s.queue.filter { it > 0 }.take(5).forEach(queue::addLast)
         while (queue.size < 3) queue.addLast(generateValue())
     }
 }
